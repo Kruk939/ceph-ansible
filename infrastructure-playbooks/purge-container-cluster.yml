@@ -2,6 +2,11 @@
 # This playbook purges a containerized Ceph cluster
 # It removes: packages, containers, configuration files and ALL THE DATA
 
+- name: confirm whether user really meant to purge the cluster
+
+  hosts: localhost
+
+  gather_facts: false
   tasks:
   - name: exit playbook, if user did not mean to purge cluster
     fail:
@@ -537,6 +542,24 @@
       command: "{{ container_binary }} rmi {{ ceph_docker_registry }}/{{ ceph_docker_image }}:{{ ceph_docker_image_tag }}"
       tags:
         - remove_img
+
+    - name: stop docker service
+      service:
+        name: docker
+        state: stopped
+        enabled: no
+      when:
+        - not is_atomic
+        - container_binary == 'docker'
+      ignore_errors: true
+
+    - name: remove docker on debian/ubuntu
+      apt:
+        name: ['docker-ce', 'docker-engine', 'docker.io', 'python-docker', 'python3-docker']
+        state: absent
+        update_cache: yes
+        autoremove: yes
+      when: ansible_os_family == 'Debian'
 
     - name: red hat based systems tasks
       block:
