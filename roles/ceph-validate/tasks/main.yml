@@ -247,7 +247,7 @@
     - openstack_keys is defined
     - openstack_keys | length > 0
     - item.key is defined
-    - item.key is not match("^[a-zA-Z0-9+/]{38}==$")
+    - item.key is not match("^[a-zA-Z0-9+]{38}==$")
 
 - name: validate clients keys key format
   fail:
@@ -258,7 +258,7 @@
     - keys is defined
     - keys | length > 0
     - item.key is defined
-    - item.key is not match("^[a-zA-Z0-9+/]{38}==$")
+    - item.key is not match("^[a-zA-Z0-9+]{38}==$")
 
 - name: validate openstack_keys caps
   fail:
