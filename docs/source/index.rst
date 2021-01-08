@@ -83,6 +83,8 @@ The ``master`` branch should be considered experimental and used with caution.
 
 - ``master`` Supports the master branch of Ceph. This branch requires Ansible version ``2.9``.
 
+.. NOTE:: ``stable-3.0`` and ``stable-3.1`` branches of ceph-ansible are deprecated and no longer maintained.
+
 Configuration and Usage
 =======================
 
@@ -284,6 +286,7 @@ ceph-ansible provides a set of playbook in ``infrastructure-playbooks`` director
 
    day-2/osds
    day-2/purge
+   day-2/upgrade
 
 Contribution
 ============
