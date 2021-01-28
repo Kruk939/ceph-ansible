@@ -1,10 +1,5 @@
 #!/usr/bin/python
 
-from ansible.module_utils.basic import AnsibleModule
-try:
-    from ansible.module_utils.ca_common import exec_command, is_containerized
-except ImportError:
-    from module_utils.ca_common import exec_command, is_containerized
 import datetime
 import copy
 import json
@@ -145,12 +140,6 @@ options:
             - Results will be returned in json format.
             - Only applicable if action is 'batch'.
         required: false
-    containerized:
-        description:
-            - Wether or not this is a containerized cluster. The value is
-            assigned or not depending on how the playbook runs.
-        required: false
-        default: None
     list:
         description:
             - List potential Ceph LVM metadata on a device
@@ -190,6 +179,9 @@ EXAMPLES = '''
     wal: /dev/sdc2
     action: create
 '''
+
+
+from ansible.module_utils.basic import AnsibleModule  # noqa 4502
 
 
 def fatal(message, module):
@@ -240,6 +232,28 @@ def build_cmd(action, container_image, cluster='ceph', binary='ceph-volume'):
     cmd.extend(action)
 
     return cmd
+
+
+def exec_command(module, cmd):
+    '''
+    Execute command
+    '''
+
+    rc, out, err = module.run_command(cmd)
+    return rc, cmd, out, err
+
+
+def is_containerized():
+    '''
+    Check if we are running on a containerized cluster
+    '''
+
+    if 'CEPH_CONTAINER_IMAGE' in os.environ:
+        container_image = os.getenv('CEPH_CONTAINER_IMAGE')
+    else:
+        container_image = None
+
+    return container_image
 
 
 def get_data(data, data_vg):
@@ -543,7 +557,6 @@ def run_module():
         block_db_devices=dict(type='list', required=False, default=[]),
         wal_devices=dict(type='list', required=False, default=[]),
         report=dict(type='bool', required=False, default=False),
-        containerized=dict(type='str', required=False, default=False),
         osd_fsid=dict(type='str', required=False),
         destroy=dict(type='bool', required=False, default=True),
     )
@@ -673,8 +686,6 @@ def run_module():
         rc, cmd, out, err = exec_command(
             module, batch_report_cmd)
         try:
-            if not out:
-                out = '{}'
             report_result = json.loads(out)
         except ValueError:
             strategy_changed_in_out = "strategy changed" in out
@@ -719,6 +730,10 @@ def run_module():
                     module, batch(module, container_image))
         else:
             cmd = batch_report_cmd
+
+    else:
+        module.fail_json(
+            msg='State must either be "create" or "prepare" or "activate" or "list" or "zap" or "batch" or "inventory".', changed=False, rc=1)  # noqa E501
 
     endd = datetime.datetime.now()
     delta = endd - startd
