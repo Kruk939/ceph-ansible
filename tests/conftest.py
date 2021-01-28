@@ -14,6 +14,7 @@ def str_to_bool(val):
     else:
         raise ValueError("Invalid input value: %s" % val)
 
+
 @pytest.fixture(scope="module")
 def setup(host):
     cluster_address = ""
@@ -27,7 +28,6 @@ def setup(host):
     container_binary = ansible_vars.get("container_binary", "")
     osd_auto_discovery = ansible_vars.get("osd_auto_discovery")
     group_names = ansible_vars["group_names"]
-    fsid = ansible_vars.get("fsid")
 
     ansible_distribution = ansible_facts["ansible_facts"]["ansible_distribution"]
 
@@ -82,6 +82,7 @@ def setup(host):
 
     return data
 
+
 @pytest.fixture()
 def node(host, request):
     """
@@ -127,6 +128,9 @@ def node(host, request):
             request.function, group_names)
         pytest.skip(reason)
 
+    if request.node.get_closest_marker('ceph_crash') and group_names in [['nfss'], ['iscsigws'], ['clients'], ['monitoring']]:
+        pytest.skip('Not a valid test for nfs, client or iscsigw nodes')
+
     if request.node.get_closest_marker("no_docker") and docker:
         pytest.skip(
             "Not a valid test for containerized deployments or atomic hosts")
@@ -138,6 +142,9 @@ def node(host, request):
     if request.node.get_closest_marker("dashboard") and not dashboard:
         pytest.skip(
             "Not a valid test with dashboard disabled")
+
+    if request.node.get_closest_marker("dashboard") and group_names == ['clients']:
+        pytest.skip('Not a valid test for client node')
 
     data = dict(
         vars=ansible_vars,
