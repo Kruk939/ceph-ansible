@@ -68,11 +68,11 @@ def delete_images(cfg):
 
         try:
             rbd_dev.delete()
-        except rbd.ImageNotFound:
+        except rbd.ImageNotFound as err:
             # Just log and ignore. If we crashed while purging we could delete
             # the image but not removed it from the config
             logger.debug("Image already deleted.")
-        except rbd.ImageHasSnapshots:
+        except rbd.ImageHasSnapshots as err:
             logger.error("Image still has snapshots.")
             # Older versions of ceph-iscsi-config do not have a error_msg
             # string.
@@ -81,9 +81,9 @@ def delete_images(cfg):
 
         if rbd_dev.error:
             if rbd_dev.error_msg:
-                logger.error("Could not remove {}. Error: {}. Manually run the "  # noqa E501
+                logger.error("Could not remove {}. Error: {}. Manually run the "
                              "rbd command line tool to delete.".
-                             format(image, rbd_dev.error_msg))
+                             format(image, rbd_error_msg))
             else:
                 logger.error("Could not remove {}. Manually run the rbd "
                              "command line tool to delete.".format(image))
@@ -92,14 +92,13 @@ def delete_images(cfg):
 
     return changes_made
 
-
-def delete_gateway_config(cfg, module):
+def delete_gateway_config(cfg):
     ioctx = cfg._open_ioctx()
     try:
         size, mtime = ioctx.stat(cfg.config_name)
     except rados.ObjectNotFound:
         logger.debug("gateway.conf already removed.")
-        return False
+        return false
 
     try:
         ioctx.remove_object(cfg.config_name)
@@ -129,7 +128,7 @@ def ansible_main():
     #
     # Purge gateway configuration, if the config has gateways
     if run_mode == 'gateway':
-        changes_made = delete_gateway_config(cfg, module)
+        changes_made = delete_gateway_config(cfg)
     elif run_mode == 'disks' and len(cfg.config['disks'].keys()) > 0:
         #
         # Remove the disks on this host, that have been registered in the

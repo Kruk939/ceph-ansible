@@ -34,10 +34,6 @@
     - block:
         - name: get nfs nodes ansible facts
           setup:
-            gather_subset:
-              - 'all'
-              - '!facter'
-              - '!ohai'
           delegate_to: "{{ item }}"
           delegate_facts: True
           with_items: "{{ groups[nfs_group_name] }}"
@@ -60,7 +56,6 @@
 
     - name: ensure cephfs mountpoint are unmounted
       command: umount -a -t ceph
-      changed_when: false
 
     - name: find mapped rbd ids
       find:
@@ -70,7 +65,6 @@
 
     - name: use sysfs to unmap rbd devices
       shell: "echo {{ item.path | basename }} > /sys/bus/rbd/remove_single_major"
-      changed_when: false
       with_items: "{{ rbd_mapped_ids.files }}"
 
     - name: unload ceph kernel modules
@@ -244,10 +238,6 @@
 
   - name: gather monitors facts
     setup:
-      gather_subset:
-        - 'all'
-        - '!facter'
-        - '!ohai'
     delegate_to: "{{ item }}"
     delegate_facts: True
     with_items: "{{ groups.get(mon_group_name | default('mons')) }}"
@@ -256,9 +246,9 @@
       name: ceph-facts
 
   - name: get all the running osds
-    shell: systemctl list-units --all | grep -oE "ceph-osd@([0-9]+).service"  # noqa 303
+    shell: |
+      systemctl list-units --all | grep -oE "ceph-osd@([0-9]+).service"
     register: osd_units
-    changed_when: false
     ignore_errors: true
 
   - name: disable ceph osd service
@@ -291,7 +281,7 @@
       wal_vg: "{{ item.wal_vg|default(omit) }}"
       action: "zap"
     environment:
-      CEPH_VOLUME_DEBUG: "{{ ceph_volume_debug }}"
+      CEPH_VOLUME_DEBUG: 1
       CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry }}/{{ ceph_docker_image }}:{{ ceph_docker_image_tag }}"
       CEPH_CONTAINER_BINARY: "{{ container_binary }}"
     with_items: "{{ lvm_volumes }}"
@@ -302,7 +292,7 @@
       data: "{{ item }}"
       action: "zap"
     environment:
-      CEPH_VOLUME_DEBUG: "{{ ceph_volume_debug }}"
+      CEPH_VOLUME_DEBUG: 1
       CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry }}/{{ ceph_docker_image }}:{{ ceph_docker_image_tag }}"
       CEPH_CONTAINER_BINARY: "{{ container_binary }}"
     with_items: "{{ devices | default([]) }}"
@@ -321,6 +311,18 @@
         - "{{ playbook_dir }}/group_vars/osds"
         - "{{ playbook_dir }}/group_vars/osds.yml"
         skip: true
+
+  - name: find all osd_disk_prepare logs
+    find:
+      paths: "{{ ceph_osd_docker_run_script_path | default('/usr/share') }}"
+      pattern: "ceph-osd-prepare-*.log"
+    register: osd_disk_prepare_logs
+
+  - name: ensure all osd_disk_prepare logs are removed
+    file:
+      path: "{{ item.path }}"
+      state: absent
+    with_items: "{{ osd_disk_prepare_logs.files }}"
 
 - name: purge ceph mon cluster
 
@@ -360,7 +362,7 @@
     - "{{ rbdmirror_group_name|default('rbdmirrors') }}"
     - "{{ nfs_group_name|default('nfss') }}"
     - "{{ mgr_group_name|default('mgrs') }}"
-    - "{{ monitoring_group_name | default('monitoring') }}"
+    - grafana-server
     - iscsigws
     - clients
 
@@ -398,7 +400,7 @@
 
 - name: purge ceph-grafana
 
-  hosts: monitoring
+  hosts: grafana-server
 
   gather_facts: false
 
@@ -459,35 +461,6 @@
           failed_when: false
       when: dashboard_enabled | bool
 
-- name: purge ceph-crash containers
-  hosts:
-    - "{{ mon_group_name | default('mons') }}"
-    - "{{ osd_group_name | default('osds') }}"
-    - "{{ mds_group_name | default('mdss') }}"
-    - "{{ rgw_group_name | default('rgws') }}"
-    - "{{ rbdmirror_group_name | default('rbdmirrors') }}"
-    - "{{ mgr_group_name | default('mgrs') }}"
-  gather_facts: false
-  become: true
-  tasks:
-    - name: stop ceph-crash container
-      service:
-        name: "ceph-crash@{{ ansible_hostname }}"
-        state: stopped
-        enabled: no
-      failed_when: false
-
-    - name: remove service file
-      file:
-        name: "/etc/systemd/system/ceph-crash.service"
-        state: absent
-      failed_when: false
-
-    - name: remove /var/lib/ceph/crash
-      file:
-        path: /var/lib/ceph/crash
-        state: absent
-
 - name: check container hosts
 
   hosts:
@@ -513,7 +486,7 @@
 
   - name: remove stopped/exited containers
     command: >
-      {{ container_binary }} container prune -f
+      {{ container_binary }} container prune{% if container_binary == 'docker' %} -f{% endif %}
     changed_when: false
 
   - name: show container list on all the nodes (should be empty)
@@ -567,7 +540,6 @@
 
     - name: remove ceph container image
       command: "{{ container_binary }} rmi {{ ceph_docker_registry }}/{{ ceph_docker_image }}:{{ ceph_docker_image_tag }}"
-      changed_when: false
       tags:
         - remove_img
 
@@ -648,24 +620,21 @@
   become: true
 
   tasks:
-  - name: purge ceph directories for "{{ ansible_hostname }}" and ceph socket
+  - name: purge ceph directories for "{{ ansible_hostname }}"
     file:
       path: "{{ item }}"
       state: absent
     with_items:
       - /etc/ceph
       - /var/log/ceph
-      - /run/ceph
-      - "{{ ceph_osd_docker_run_script_path | default('/usr/share') }}/ceph-osd-run.sh"
 
   - name: remove ceph data
-    shell: rm -rf /var/lib/ceph/*  # noqa 302
-    changed_when: false
+    shell: rm -rf /var/lib/ceph/*
 
   # (todo): remove this when we are able to manage docker
   # service on atomic host.
   - name: remove docker data
-    shell: rm -rf /var/lib/docker/*  # noqa 302
+    shell: rm -rf /var/lib/docker/*
     when: not is_atomic | bool
 
 - name: purge fetch directory
@@ -683,5 +652,5 @@
 
   - name: purge fetch directory for localhost
     file:
-      path: "{{ fetch_directory | default('fetch/') }}/"
+      path: "{{ fetch_directory }}/"
       state: absent

@@ -1,14 +1,14 @@
 #!/usr/bin/python
 
+#
 # Copyright (c) 2018 Red Hat, Inc.
 #
-# GNU General Public License v3.0+
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+#
 
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
-from ansible.module_utils.basic import AnsibleModule
-import datetime
 
 ANSIBLE_METADATA = {
     'metadata_version': '1.1',
@@ -60,6 +60,9 @@ EXAMPLES = '''
 '''
 
 RETURN = '''#  '''
+
+from ansible.module_utils.basic import AnsibleModule
+import datetime
 
 
 def fatal(message, module):
@@ -114,9 +117,9 @@ def sort_osd_crush_location(location, module):
             "region",
             "root",
         ]
-        return sorted(location, key=lambda crush: crush_bucket_types.index(crush[0]))  # noqa E501
+        return sorted(location, key=lambda crush: crush_bucket_types.index(crush[0]))
     except ValueError as error:
-        fatal("{} is not a valid CRUSH bucket, valid bucket types are {}".format(error.args[0].split()[0], crush_bucket_types), module)  # noqa E501
+        fatal("{} is not a valid CRUSH bucket, valid bucket types are {}".format(error.args[0].split()[0], crush_bucket_types), module)
 
 
 def create_and_move_buckets_list(cluster, location, containerized=None):
@@ -128,10 +131,10 @@ def create_and_move_buckets_list(cluster, location, containerized=None):
     for item in location:
         bucket_type, bucket_name = item
         # ceph osd crush add-bucket maroot root
-        cmd_list.append(generate_cmd(cluster, "add-bucket", bucket_name, bucket_type, containerized))  # noqa E501
+        cmd_list.append(generate_cmd(cluster, "add-bucket", bucket_name, bucket_type, containerized))
         if previous_bucket:
             # ceph osd crush move monrack root=maroot
-            cmd_list.append(generate_cmd(cluster, "move", previous_bucket, "%s=%s" % (bucket_type, bucket_name), containerized))  # noqa E501
+            cmd_list.append(generate_cmd(cluster, "move", previous_bucket, "%s=%s" % (bucket_type, bucket_name), containerized))
         previous_bucket = item[1]
     return cmd_list
 
@@ -166,19 +169,19 @@ def run_module():
         changed=False,
         stdout='',
         stderr='',
-        rc=0,
+        rc='',
         start='',
         end='',
         delta='',
     )
 
     if module.check_mode:
-        module.exit_json(**result)
+        return result
 
     startd = datetime.datetime.now()
 
     # run the Ceph command to add buckets
-    rc, cmd, out, err = exec_commands(module, create_and_move_buckets_list(cluster, location, containerized))  # noqa E501
+    rc, cmd, out, err = exec_commands(module, create_and_move_buckets_list(cluster, location, containerized))
 
     endd = datetime.datetime.now()
     delta = endd - startd
