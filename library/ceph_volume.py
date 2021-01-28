@@ -2,9 +2,9 @@
 
 from ansible.module_utils.basic import AnsibleModule
 try:
-    from ansible.module_utils.ca_common import exec_command, is_containerized
+    from ansible.module_utils.ca_common import exec_command, is_containerized, fatal
 except ImportError:
-    from module_utils.ca_common import exec_command, is_containerized
+    from module_utils.ca_common import exec_command, is_containerized, fatal
 import datetime
 import copy
 import json
@@ -145,12 +145,6 @@ options:
             - Results will be returned in json format.
             - Only applicable if action is 'batch'.
         required: false
-    containerized:
-        description:
-            - Wether or not this is a containerized cluster. The value is
-            assigned or not depending on how the playbook runs.
-        required: false
-        default: None
     list:
         description:
             - List potential Ceph LVM metadata on a device
@@ -190,17 +184,6 @@ EXAMPLES = '''
     wal: /dev/sdc2
     action: create
 '''
-
-
-def fatal(message, module):
-    '''
-    Report a fatal error and exit
-    '''
-
-    if module:
-        module.fail_json(msg=message, changed=False, rc=1)
-    else:
-        raise(Exception(message))
 
 
 def container_exec(binary, container_image):
@@ -543,7 +526,6 @@ def run_module():
         block_db_devices=dict(type='list', required=False, default=[]),
         wal_devices=dict(type='list', required=False, default=[]),
         report=dict(type='bool', required=False, default=False),
-        containerized=dict(type='str', required=False, default=False),
         osd_fsid=dict(type='str', required=False),
         destroy=dict(type='bool', required=False, default=True),
     )
