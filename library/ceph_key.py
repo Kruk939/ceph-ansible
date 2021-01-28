@@ -17,6 +17,19 @@
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
+from ansible.module_utils.basic import AnsibleModule
+try:
+    from ansible.module_utils.ca_common import is_containerized, container_exec
+except ImportError:
+    from module_utils.ca_common import is_containerized, container_exec
+import datetime
+import json
+import os
+import struct
+import time
+import base64
+import socket
+
 
 ANSIBLE_METADATA = {
     'metadata_version': '1.1',
@@ -104,6 +117,12 @@ options:
             This command can ONLY run from a monitor node.
         required: false
         default: false
+    output_format:
+        description:
+            - The key output format when retrieving the information of an
+            entity.
+        required: false
+        default: json
 '''
 
 EXAMPLES = '''
@@ -164,6 +183,13 @@ caps:
     name: "my_key""
     state: info
 
+- name: info cephx admin key (plain)
+  ceph_key:
+    name: client.admin
+    output_format: plain
+    state: info
+  register: client_admin_key
+
 - name: list cephx keys
   ceph_key:
     state: list
@@ -175,17 +201,6 @@ caps:
 
 RETURN = '''#  '''
 
-from ansible.module_utils.basic import AnsibleModule  # noqa E402
-import datetime  # noqa E402
-import grp  # noqa E402
-import json  # noqa E402
-import os  # noqa E402
-import pwd  # noqa E402
-import stat  # noqa E402
-import struct  # noqa E402
-import time  # noqa E402
-import base64  # noqa E402
-import socket  # noqa E402
 
 CEPH_INITIAL_KEYS = ['client.admin', 'client.bootstrap-mds', 'client.bootstrap-mgr',  # noqa E501
                      'client.bootstrap-osd', 'client.bootstrap-rbd', 'client.bootstrap-rbd-mirror', 'client.bootstrap-rgw']  # noqa E501
@@ -213,36 +228,6 @@ def fatal(message, module):
         module.fail_json(msg=message, rc=1)
     else:
         raise(Exception(message))
-
-
-def container_exec(binary, container_image):
-    '''
-    Build the docker CLI to run a command inside a container
-    '''
-
-    container_binary = os.getenv('CEPH_CONTAINER_BINARY')
-    command_exec = [container_binary,
-                    'run',
-                    '--rm',
-                    '--net=host',
-                    '-v', '/etc/ceph:/etc/ceph:z',
-                    '-v', '/var/lib/ceph/:/var/lib/ceph/:z',
-                    '-v', '/var/log/ceph/:/var/log/ceph/:z',
-                    '--entrypoint=' + binary, container_image]
-    return command_exec
-
-
-def is_containerized():
-    '''
-    Check if we are running on a containerized cluster
-    '''
-
-    if 'CEPH_CONTAINER_IMAGE' in os.environ:
-        container_image = os.getenv('CEPH_CONTAINER_IMAGE')
-    else:
-        container_image = None
-
-    return container_image
 
 
 def generate_secret():
@@ -514,7 +499,8 @@ def run_module():
         import_key=dict(type='bool', required=False, default=True),
         dest=dict(type='str', required=False, default='/etc/ceph/'),
         user=dict(type='str', required=False, default='client.admin'),
-        user_key=dict(type='str', required=False, default=None)
+        user_key=dict(type='str', required=False, default=None),
+        output_format=dict(type='str', required=False, default='json', choices=['json', 'plain', 'xml', 'yaml'])
     )
 
     module = AnsibleModule(
@@ -535,6 +521,7 @@ def run_module():
     dest = module.params.get('dest')
     user = module.params.get('user')
     user_key = module.params.get('user_key')
+    output_format = module.params.get('output_format')
 
     changed = False
 
@@ -569,8 +556,6 @@ def run_module():
         user_key_path = os.path.join(user_key_dir, user_key_filename)
     else:
         user_key_path = user_key
-
-    output_format = "json"
 
     if (state in ["present", "update"]):
         # if dest is not a directory, the user wants to change the file's name
